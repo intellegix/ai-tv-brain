@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TV Remote">
+    <title>TV Voice Remote</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --bg: #0a0a0a;
+            --surface: #1a1a1a;
+            --surface-hover: #252525;
+            --accent: #e50914;
+            --accent-glow: rgba(229, 9, 20, 0.4);
+            --text: #ffffff;
+            --text-muted: #888888;
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+            padding-top: env(safe-area-inset-top, 20px);
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        /* Connection Status */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--warning);
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+        }
+
+        /* Main Voice Button */
+        .voice-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+        }
+
+        .voice-button {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            border: none;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 48px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .voice-button::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .voice-button:active,
+        .voice-button.recording {
+            background: var(--accent);
+            transform: scale(1.05);
+        }
+
+        .voice-button.recording::before {
+            border-color: var(--accent);
+            animation: pulse-ring 1s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
+
+        .voice-label {
+            font-size: 16px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .voice-label.active {
+            color: var(--accent);
+        }
+
+        /* Transcription Display */
+        .transcription {
+            min-height: 60px;
+            padding: 16px;
+            text-align: center;
+            font-size: 18px;
+            max-width: 100%;
+        }
+
+        .transcription.listening {
+            color: var(--accent);
+        }
+
+        .transcription.response {
+            color: var(--success);
+        }
+
+        /* D-Pad Navigation */
+        .dpad-section {
+            padding: 20px;
+        }
+
+        .dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 64px);
+            grid-template-rows: repeat(3, 64px);
+            gap: 8px;
+        }
+
+        .dpad-btn {
+            background: var(--surface);
+            border: none;
+            border-radius: 12px;
+            color: var(--text);
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+
+        .dpad-btn:active {
+            background: var(--surface-hover);
+            transform: scale(0.95);
+        }
+
+        .dpad-btn.center {
+            background: var(--accent);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .dpad-btn.center:active {
+            background: #ff1a1a;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            gap: 12px;
+            padding: 16px 0;
+        }
+
+        .quick-btn {
+            background: var(--surface);
+            border: none;
+            border-radius: 12px;
+            color: var(--text);
+            padding: 12px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .quick-btn:active {
+            background: var(--surface-hover);
+            transform: scale(0.95);
+        }
+
+        /* Settings Modal */
+        .settings-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .settings-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-modal.open {
+            display: flex;
+        }
+
+        .settings-content {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .settings-content h2 {
+            margin-bottom: 20px;
+        }
+
+        .settings-content label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+        }
+
+        .settings-content input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+
+        .settings-content button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: var(--text);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Login Screen */
+        .login-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-overlay.hidden {
+            display: none;
+        }
+
+        .login-box {
+            background: var(--surface);
+            border-radius: 20px;
+            padding: 40px 30px;
+            width: 100%;
+            max-width: 320px;
+            text-align: center;
+        }
+
+        .login-box h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .login-box p {
+            color: var(--text-muted);
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .login-box input[type="password"] {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: 2px solid #333;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+        }
+
+        .login-box input[type="password"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .login-box button {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            background: var(--accent);
+            color: var(--text);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .login-error {
+            color: var(--accent);
+            font-size: 14px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .login-error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-box">
+            <h1>🎬 TV Remote</h1>
+            <p>Enter password to continue</p>
+            <input type="password" id="loginPassword" placeholder="••••••••" autofocus>
+            <button onclick="attemptLogin()">Unlock</button>
+            <div class="login-error" id="loginError">Incorrect password</div>
+        </div>
+    </div>
+    <!-- Settings Toggle -->
+    <button class="settings-toggle" onclick="toggleSettings()">⚙️</button>
+
+    <!-- Connection Status -->
+    <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Connecting...</span>
+    </div>
+
+    <!-- Main Voice Section -->
+    <div class="voice-section">
+        <div class="transcription" id="transcription">
+            Hold the button and speak
+        </div>
+
+        <button 
+            class="voice-button" 
+            id="voiceBtn"
+            ontouchstart="startRecording(event)"
+            ontouchend="stopRecording(event)"
+            onmousedown="startRecording(event)"
+            onmouseup="stopRecording(event)"
+        >
+            🎤
+        </button>
+
+        <div class="voice-label" id="voiceLabel">
+            Push to Talk
+        </div>
+    </div>
+
+    <!-- D-Pad Navigation -->
+    <div class="dpad-section">
+        <div class="dpad">
+            <div></div>
+            <button class="dpad-btn" onclick="sendNav('up')">▲</button>
+            <div></div>
+            <button class="dpad-btn" onclick="sendNav('left')">◀</button>
+            <button class="dpad-btn center" onclick="sendNav('select')">OK</button>
+            <button class="dpad-btn" onclick="sendNav('right')">▶</button>
+            <div></div>
+            <button class="dpad-btn" onclick="sendNav('down')">▼</button>
+            <div></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <button class="quick-btn" onclick="sendNav('back')">← Back</button>
+            <button class="quick-btn" onclick="sendNav('home')">🏠 Home</button>
+            <button class="quick-btn" onclick="sendCommand('playback', {action: 'pause'})">⏸ Pause</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="settings-modal" id="settingsModal">
+        <div class="settings-content">
+            <h2>Settings</h2>
+            <label>Server URL</label>
+            <input type="text" id="serverUrl" placeholder="ws://192.168.1.100:8765">
+            <button onclick="saveSettings()">Save & Connect</button>
+        </div>
+    </div>
+
+    <script>
+        // ============ Login ============
+        const APP_PASSWORD_HASH = 'Devos$@2026'; // In production, use env var via server
+
+        function checkLogin() {
+            const isLoggedIn = sessionStorage.getItem('tv_remote_auth') === 'true';
+            const loginOverlay = document.getElementById('loginOverlay');
+            if (isLoggedIn) {
+                loginOverlay.classList.add('hidden');
+                return true;
+            }
+            return false;
+        }
+
+        function attemptLogin() {
+            const passwordInput = document.getElementById('loginPassword');
+            const loginError = document.getElementById('loginError');
+            const password = passwordInput.value;
+
+            if (password === APP_PASSWORD_HASH) {
+                sessionStorage.setItem('tv_remote_auth', 'true');
+                document.getElementById('loginOverlay').classList.add('hidden');
+                connect(); // Start connection after login
+            } else {
+                loginError.classList.add('show');
+                passwordInput.value = '';
+                passwordInput.focus();
+                setTimeout(() => loginError.classList.remove('show'), 2000);
+            }
+        }
+
+        // Allow Enter key to submit login
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !document.getElementById('loginOverlay').classList.contains('hidden')) {
+                attemptLogin();
+            }
+        });
+
+        // ============ Configuration ============
+        const CONFIG = {
+            serverUrl: localStorage.getItem('serverUrl') || 'wss://tv-brain.onrender.com/voice',
+            sampleRate: 16000
+        };
+
+        // ============ State ============
+        let ws = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let audioContext = null;
+
+        // ============ DOM Elements ============
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const voiceBtn = document.getElementById('voiceBtn');
+        const voiceLabel = document.getElementById('voiceLabel');
+        const transcription = document.getElementById('transcription');
+        const serverUrlInput = document.getElementById('serverUrl');
+
+        // ============ WebSocket Connection ============
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+
+            statusText.textContent = 'Connecting...';
+            statusDot.classList.remove('connected');
+
+            try {
+                ws = new WebSocket(CONFIG.serverUrl);
+
+                ws.onopen = () => {
+                    console.log('Connected to server');
+                    statusDot.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    handleServerMessage(data);
+                };
+
+                ws.onclose = () => {
+                    console.log('Disconnected');
+                    statusDot.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                    
+                    // Reconnect after 3 seconds
+                    setTimeout(connect, 3000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    statusText.textContent = 'Connection error';
+                };
+            } catch (e) {
+                console.error('Failed to connect:', e);
+                statusText.textContent = 'Invalid server URL';
+            }
+        }
+
+        function handleServerMessage(data) {
+            console.log('Server message:', data);
+
+            if (data.transcription) {
+                transcription.textContent = `"${data.transcription}"`;
+                transcription.className = 'transcription';
+            }
+
+            if (data.tts_response) {
+                transcription.textContent = data.tts_response;
+                transcription.className = 'transcription response';
+                
+                // Optionally speak the response
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(data.tts_response);
+                    speechSynthesis.speak(utterance);
+                }
+            }
+
+            if (data.error) {
+                transcription.textContent = `Error: ${data.error}`;
+                transcription.className = 'transcription';
+            }
+        }
+
+        // ============ Audio Recording ============
+        async function startRecording(event) {
+            event.preventDefault();
+            
+            if (isRecording) return;
+            isRecording = true;
+
+            voiceBtn.classList.add('recording');
+            voiceLabel.textContent = 'Listening...';
+            voiceLabel.classList.add('active');
+            transcription.textContent = 'Listening...';
+            transcription.className = 'transcription listening';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: CONFIG.sampleRate,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    } 
+                });
+
+                // Use AudioContext for better control over audio format
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: CONFIG.sampleRate
+                });
+
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                audioChunks = [];
+
+                processor.onaudioprocess = (e) => {
+                    if (isRecording) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        // Convert float32 to int16
+                        const int16Data = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                        }
+                        audioChunks.push(int16Data);
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                // Store references for cleanup
+                window.currentStream = stream;
+                window.currentProcessor = processor;
+                window.currentSource = source;
+
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                transcription.textContent = 'Microphone access denied';
+                stopRecording();
+            }
+        }
+
+        function stopRecording(event) {
+            if (event) event.preventDefault();
+            
+            if (!isRecording) return;
+            isRecording = false;
+
+            voiceBtn.classList.remove('recording');
+            voiceLabel.textContent = 'Push to Talk';
+            voiceLabel.classList.remove('active');
+            transcription.textContent = 'Processing...';
+
+            // Clean up audio
+            if (window.currentStream) {
+                window.currentStream.getTracks().forEach(track => track.stop());
+            }
+            if (window.currentProcessor) {
+                window.currentProcessor.disconnect();
+            }
+            if (window.currentSource) {
+                window.currentSource.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            // Send audio to server
+            if (audioChunks.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+                sendAudio();
+            } else {
+                transcription.textContent = 'Not connected to server';
+            }
+        }
+
+        function sendAudio() {
+            // Combine all chunks
+            const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+            const combined = new Int16Array(totalLength);
+            let offset = 0;
+            for (const chunk of audioChunks) {
+                combined.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            // Create WAV file
+            const wavBuffer = createWavFile(combined, CONFIG.sampleRate);
+
+            // Send metadata first
+            ws.send(JSON.stringify({
+                type: 'audio',
+                timestamp: new Date().toISOString(),
+                sample_rate: CONFIG.sampleRate,
+                format: 'wav'
+            }));
+
+            // Then send audio data
+            ws.send(wavBuffer);
+
+            audioChunks = [];
+        }
+
+        function createWavFile(samples, sampleRate) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            // WAV header
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + samples.length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); // Subchunk1Size
+            view.setUint16(20, 1, true); // AudioFormat (PCM)
+            view.setUint16(22, 1, true); // NumChannels
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); // ByteRate
+            view.setUint16(32, 2, true); // BlockAlign
+            view.setUint16(34, 16, true); // BitsPerSample
+            writeString(view, 36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+
+            // Write samples
+            const offset = 44;
+            for (let i = 0; i < samples.length; i++) {
+                view.setInt16(offset + i * 2, samples[i], true);
+            }
+
+            return buffer;
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // ============ Navigation Commands ============
+        function sendNav(direction) {
+            sendCommand('navigate', { direction: direction });
+            
+            // Haptic feedback
+            if (navigator.vibrate) {
+                navigator.vibrate(10);
+            }
+        }
+
+        function sendCommand(type, payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: type,
+                    ...payload
+                }));
+            } else {
+                console.warn('Not connected to server');
+            }
+        }
+
+        // ============ Settings ============
+        function toggleSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.toggle('open');
+            serverUrlInput.value = CONFIG.serverUrl;
+        }
+
+        function saveSettings() {
+            CONFIG.serverUrl = serverUrlInput.value;
+            localStorage.setItem('serverUrl', CONFIG.serverUrl);
+            toggleSettings();
+            connect();
+        }
+
+        // ============ Prevent zoom on double tap ============
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        // ============ Initialize ============
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check for microphone support
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                transcription.textContent = 'Microphone not supported in this browser';
+                voiceBtn.disabled = true;
+            }
+
+            // Check login status - only connect if already logged in
+            if (checkLogin()) {
+                connect();
+            }
+        });
+    </script>
+</body>
+</html>
