@@ -9,13 +9,17 @@ import json
 import logging
 import os
 import io
+import base64
 from datetime import datetime
 from typing import Optional
 
 from dotenv import load_dotenv
 import websockets
-from faster_whisper import WhisperModel
+import httpx
 import anthropic
+
+# Groq API for cloud Whisper
+GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 # Load environment variables from .env file
 load_dotenv()
@@ -152,8 +156,8 @@ Examples:
 
 class TVBrain:
     def __init__(self):
-        self.whisper: Optional[WhisperModel] = None
         self.claude: Optional[anthropic.Anthropic] = None
+        self.groq_api_key: Optional[str] = None
         self.tv_websocket = None
         self.phone_clients = set()
         self.tv_state = {
@@ -165,29 +169,43 @@ class TVBrain:
         self.conversation_history = []
 
     async def initialize(self):
-        """Load models and initialize services"""
-        logger.info(f"Loading Whisper model: {CONFIG['whisper_model']}")
-        self.whisper = WhisperModel(
-            CONFIG["whisper_model"],
-            device=CONFIG["whisper_device"],
-            compute_type="int8" if CONFIG["whisper_device"] == "cpu" else "float16"
-        )
-        logger.info("Whisper model loaded")
+        """Initialize API clients"""
+        self.groq_api_key = os.environ.get("GROQ_API_KEY")
+        if not self.groq_api_key:
+            logger.warning("GROQ_API_KEY not set - speech-to-text will not work")
+        else:
+            logger.info("Groq API key configured for cloud Whisper")
 
         self.claude = anthropic.Anthropic()
         logger.info("Claude client initialized")
 
     async def transcribe(self, audio_bytes: bytes) -> str:
-        """Transcribe audio to text using Whisper"""
-        segments, info = self.whisper.transcribe(
-            io.BytesIO(audio_bytes),
-            language="en",
-            beam_size=5,
-            vad_filter=True
-        )
-        text = " ".join([seg.text.strip() for seg in segments])
-        logger.info(f"Transcribed: '{text}'")
-        return text
+        """Transcribe audio to text using Groq's cloud Whisper API"""
+        if not self.groq_api_key:
+            logger.error("No Groq API key configured")
+            return ""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    GROQ_API_URL,
+                    headers={"Authorization": f"Bearer {self.groq_api_key}"},
+                    files={"file": ("audio.webm", audio_bytes, "audio/webm")},
+                    data={
+                        "model": "whisper-large-v3",
+                        "language": "en",
+                        "response_format": "json"
+                    },
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+                text = result.get("text", "").strip()
+                logger.info(f"Transcribed: '{text}'")
+                return text
+        except Exception as e:
+            logger.error(f"Transcription error: {e}")
+            return ""
 
     async def process_command(self, text: str) -> dict:
         """Process transcribed text through Claude"""
