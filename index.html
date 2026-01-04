@@ -466,8 +466,15 @@
         });
 
         // ============ Configuration ============
+        // Auto-detect WebSocket URL based on current page location
+        const getDefaultWsUrl = () => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host || 'ai-tv-brain.onrender.com';
+            return `${protocol}//${host}/voice`;
+        };
+
         const CONFIG = {
-            serverUrl: localStorage.getItem('serverUrl') || 'wss://ai-tv-brain.onrender.com/voice',
+            serverUrl: localStorage.getItem('serverUrl') || getDefaultWsUrl(),
             sampleRate: 16000
         };
 

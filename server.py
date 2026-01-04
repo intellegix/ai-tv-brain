@@ -357,11 +357,28 @@ class TVBrain:
             logger.warning(f"Unknown path: {path}")
             await websocket.close(1003, "Unknown path")
 
-    async def health_check(self, path, request_headers):
-        """Handle HTTP health check requests from Render"""
-        if path == "/health" or path == "/":
+    async def process_request(self, path, request_headers):
+        """Handle HTTP requests - serve static files and health checks"""
+        # Health check endpoint
+        if path == "/health":
             return (200, [("Content-Type", "text/plain")], b"OK")
-        return None  # Continue with WebSocket handshake
+
+        # Serve index.html at root
+        if path == "/" or path == "/index.html":
+            try:
+                # Get the directory where server.py is located
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                index_path = os.path.join(script_dir, "index.html")
+
+                with open(index_path, "rb") as f:
+                    content = f.read()
+
+                return (200, [("Content-Type", "text/html; charset=utf-8")], content)
+            except FileNotFoundError:
+                return (404, [("Content-Type", "text/plain")], b"index.html not found")
+
+        # Let WebSocket connections through
+        return None
 
     async def run(self):
         """Start the WebSocket server"""
@@ -378,13 +395,14 @@ class TVBrain:
             port,
             ping_interval=30,
             ping_timeout=10,
-            process_request=self.health_check
+            process_request=self.process_request
         ):
             logger.info(f"Server running at ws://{CONFIG['host']}:{port}")
             logger.info("Endpoints:")
-            logger.info("  /voice - Phone voice remote")
-            logger.info("  /tv    - Dell 5070 TV platform")
-            logger.info("  /health - HTTP health check")
+            logger.info("  /        - Web UI (index.html)")
+            logger.info("  /voice   - Phone voice remote (WebSocket)")
+            logger.info("  /tv      - Dell 5070 TV platform (WebSocket)")
+            logger.info("  /health  - HTTP health check")
             await asyncio.Future()  # Run forever
 
 
