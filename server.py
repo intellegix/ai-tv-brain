@@ -357,23 +357,34 @@ class TVBrain:
             logger.warning(f"Unknown path: {path}")
             await websocket.close(1003, "Unknown path")
 
+    async def health_check(self, path, request_headers):
+        """Handle HTTP health check requests from Render"""
+        if path == "/health" or path == "/":
+            return (200, [("Content-Type", "text/plain")], b"OK")
+        return None  # Continue with WebSocket handshake
+
     async def run(self):
         """Start the WebSocket server"""
         await self.initialize()
-        
-        logger.info(f"Starting server on {CONFIG['host']}:{CONFIG['port']}")
-        
+
+        # Get port from environment (Render sets PORT)
+        port = int(os.environ.get("PORT", CONFIG["port"]))
+
+        logger.info(f"Starting server on {CONFIG['host']}:{port}")
+
         async with websockets.serve(
             self.router,
             CONFIG["host"],
-            CONFIG["port"],
+            port,
             ping_interval=30,
-            ping_timeout=10
+            ping_timeout=10,
+            process_request=self.health_check
         ):
-            logger.info(f"Server running at ws://{CONFIG['host']}:{CONFIG['port']}")
+            logger.info(f"Server running at ws://{CONFIG['host']}:{port}")
             logger.info("Endpoints:")
             logger.info("  /voice - Phone voice remote")
             logger.info("  /tv    - Dell 5070 TV platform")
+            logger.info("  /health - HTTP health check")
             await asyncio.Future()  # Run forever
 
 
