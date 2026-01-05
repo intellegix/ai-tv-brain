@@ -21,6 +21,9 @@ import anthropic
 # Groq API for cloud Whisper
 GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
+# ElevenLabs API for text-to-speech
+ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -37,6 +40,9 @@ CONFIG = {
     "whisper_device": os.environ.get("WHISPER_DEVICE", "cpu"),  # "cpu" or "cuda"
     "anthropic_model": os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
     "tv_platform_url": os.environ.get("TV_URL", "ws://192.168.1.101:9000"),
+    # ElevenLabs voice settings - "Josh" is a natural male voice, "Rachel" is natural female
+    "elevenlabs_voice_id": os.environ.get("ELEVENLABS_VOICE_ID", "TxGEqnHWrfWFTfGW9XjX"),  # Josh voice
+    "elevenlabs_model": os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),  # Fast, high quality
     "host": "0.0.0.0",
     "port": 8765
 }
@@ -158,6 +164,7 @@ class TVBrain:
     def __init__(self):
         self.claude: Optional[anthropic.Anthropic] = None
         self.groq_api_key: Optional[str] = None
+        self.elevenlabs_api_key: Optional[str] = None
         self.tv_websocket = None
         self.phone_clients = set()
         self.tv_state = {
@@ -175,6 +182,12 @@ class TVBrain:
             logger.warning("GROQ_API_KEY not set - speech-to-text will not work")
         else:
             logger.info("Groq API key configured for cloud Whisper")
+
+        self.elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY")
+        if not self.elevenlabs_api_key:
+            logger.warning("ELEVENLABS_API_KEY not set - text-to-speech will use browser fallback")
+        else:
+            logger.info("ElevenLabs API key configured for realistic TTS")
 
         self.claude = anthropic.Anthropic()
         logger.info("Claude client initialized")
@@ -206,6 +219,50 @@ class TVBrain:
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             return ""
+
+    async def text_to_speech(self, text: str) -> Optional[str]:
+        """Convert text to speech using ElevenLabs API, returns base64-encoded audio"""
+        if not self.elevenlabs_api_key:
+            logger.debug("No ElevenLabs API key, skipping TTS")
+            return None
+
+        if not text or not text.strip():
+            return None
+
+        try:
+            voice_id = CONFIG["elevenlabs_voice_id"]
+            url = f"{ELEVENLABS_API_URL}/{voice_id}"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    headers={
+                        "xi-api-key": self.elevenlabs_api_key,
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "text": text,
+                        "model_id": CONFIG["elevenlabs_model"],
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75,
+                            "style": 0.0,
+                            "use_speaker_boost": True
+                        }
+                    },
+                    timeout=30.0
+                )
+                response.raise_for_status()
+
+                # Return base64-encoded audio
+                audio_bytes = response.content
+                audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                logger.info(f"Generated TTS audio: {len(audio_bytes)} bytes")
+                return audio_base64
+
+        except Exception as e:
+            logger.error(f"TTS error: {e}")
+            return None
 
     async def process_command(self, text: str) -> dict:
         """Process transcribed text through Claude"""
@@ -304,20 +361,26 @@ class TVBrain:
                     # Binary message - audio data
                     if audio_metadata:
                         logger.info(f"Received {len(message)} bytes of audio")
-                        
+
                         # Transcribe
                         text = await self.transcribe(message)
-                        
+
                         # Process through Claude
                         result = await self.process_command(text)
-                        
+
                         # Send commands to TV
                         if result["commands"]:
                             await self.send_to_tv(result["commands"])
-                        
+
+                        # Generate TTS audio for the response
+                        tts_audio = await self.text_to_speech(result.get("tts_response", ""))
+                        if tts_audio:
+                            result["tts_audio"] = tts_audio
+                            result["tts_format"] = "mp3"
+
                         # Send response back to phone
                         await websocket.send(json.dumps(result))
-                        
+
                         audio_metadata = None
 
         except websockets.exceptions.ConnectionClosed:
