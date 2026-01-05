@@ -315,7 +315,7 @@ class TVBrain:
             logger.info(f"Command: {cmd}")
 
         return {
-            "tts_response": text_response or "Done",
+            "tts_response": text_response,  # Only include meaningful responses, not "Done"
             "commands": commands,
             "transcription": text
         }

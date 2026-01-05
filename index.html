@@ -605,6 +605,10 @@
                     // No ElevenLabs audio, use browser speech synthesis
                     fallbackToSpeechSynthesis(data.tts_response);
                 }
+            } else if (data.commands && data.commands.length > 0) {
+                // Command executed but no verbal response needed
+                transcription.textContent = '✓';
+                transcription.className = 'transcription response';
             }
 
             if (data.error) {
